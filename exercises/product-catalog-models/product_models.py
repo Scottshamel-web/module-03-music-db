@@ -5,6 +5,7 @@ from sqlalchemy import (
     Boolean,
     select,
     delete,
+    inspect,
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -221,7 +222,26 @@ def run_queries():
                 f"{product.category_name}"
             )
 
+def inspect_database():
+    """Check the tables and columns SQLAlchemy created."""
+
+    inspector = inspect(engine)
+
+    # Show every table currently in the database.
+    print("\n=== Database Tables ===")
+    print("Tables:", inspector.get_table_names())
+
+    # Look at the columns in the products table.
+    print("\n=== Products Table Columns ===")
+
+    for column in inspector.get_columns("products"):
+        print(
+            f"{column['name']}: "
+            f"{column['type']} "
+            f"(nullable={column['nullable']})"
+        )
 
 if __name__ == "__main__":
     add_sample_data()
     run_queries()
+    inspect_database()
