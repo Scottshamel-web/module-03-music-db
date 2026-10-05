@@ -25,12 +25,22 @@ class Base(DeclarativeBase):
 # This table links students to courses (many-to-many).
 # It has no extra columns — just two foreign keys, both part of the PK.
 #
-# enrollments = Table(
-#     "enrollments",
-#     Base.metadata,
-#     Column("student_id", Integer, ForeignKey("students.id"), primary_key=True),
-#     Column("course_id",  Integer, ForeignKey("courses.id"),  primary_key=True),
-# )
+enrollments = Table(
+    "enrollments",
+    Base.metadata,
+    Column(
+        "student_id",
+        Integer,
+        ForeignKey("students.id"),
+        primary_key=True
+    ),
+    Column(
+        "course_id",
+        Integer,
+        ForeignKey("courses.id"),
+        primary_key=True
+    ),
+)
 
 
 # ── TODO: Implement the Department model ──────────────────────────────────────
@@ -41,9 +51,27 @@ class Base(DeclarativeBase):
 # Relationship: one department -> many courses
 class Department(Base):
     __tablename__ = "departments"
-    # TODO: id, name columns
-    # TODO: relationship to Course
-    pass
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True
+    )
+
+    name: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        unique=True
+    )
+
+    # One department can have many teachers.
+    teachers: Mapped[List["Teacher"]] = relationship(
+        back_populates="department"
+    )
+
+    # One department can also have many courses.
+    courses: Mapped[List["Course"]] = relationship(
+        back_populates="department"
+    )
 
 
 # ── TODO: Implement the Teacher model ─────────────────────────────────────────
@@ -55,8 +83,30 @@ class Department(Base):
 # Relationship: many-to-one with Department; one-to-many with Course
 class Teacher(Base):
     __tablename__ = "teachers"
-    # TODO: columns and relationships
-    pass
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True
+    )
+
+    name: Mapped[str] = mapped_column(
+        String,
+        nullable=False
+    )
+
+    department_id: Mapped[int] = mapped_column(
+        ForeignKey("departments.id")
+    )
+
+    # Each teacher belongs to one department.
+    department: Mapped["Department"] = relationship(
+        back_populates="teachers"
+    )
+
+    # One teacher can teach multiple courses.
+    courses: Mapped[List["Course"]] = relationship(
+        back_populates="teacher"
+    )
 
 
 # ── TODO: Implement the Course model ──────────────────────────────────────────
@@ -73,10 +123,46 @@ class Teacher(Base):
 #   students   (many-to-many via enrollments table)
 class Course(Base):
     __tablename__ = "courses"
-    # TODO: columns and relationships
-    # TODO: students = relationship("Student", secondary=enrollments, back_populates="courses")
-    pass
 
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True
+    )
+
+    title: Mapped[str] = mapped_column(
+        String,
+        nullable=False
+    )
+
+    credits: Mapped[int] = mapped_column(
+        Integer,
+        default=3
+    )
+
+    department_id: Mapped[int] = mapped_column(
+        ForeignKey("departments.id")
+    )
+
+    teacher_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("teachers.id"),
+        nullable=True
+    )
+
+    # Each course belongs to one department.
+    department: Mapped["Department"] = relationship(
+        back_populates="courses"
+    )
+
+    # A course can have one teacher.
+    teacher: Mapped[Optional["Teacher"]] = relationship(
+        back_populates="courses"
+    )
+
+    # A course can have many students.
+    students: Mapped[List["Student"]] = relationship(
+        secondary=enrollments,
+        back_populates="courses"
+    )
 
 # ── TODO: Implement the Student model ─────────────────────────────────────────
 # Table name: "students"
@@ -89,8 +175,32 @@ class Course(Base):
 #   courses (many-to-many via enrollments, back_populates="students")
 class Student(Base):
     __tablename__ = "students"
-    # TODO: columns and relationships
-    pass
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True
+    )
+
+    name: Mapped[str] = mapped_column(
+        String,
+        nullable=False
+    )
+
+    email: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        unique=True
+    )
+
+    year: Mapped[int] = mapped_column(
+        Integer
+    )
+
+    # A student can be enrolled in many courses.
+    courses: Mapped[List["Course"]] = relationship(
+        secondary=enrollments,
+        back_populates="students"
+    )
 
 
 # ── Test block ────────────────────────────────────────────────────────────────
@@ -121,32 +231,84 @@ if __name__ == "__main__":
         session.add_all([alice, bob, carol])
         session.flush()
 
-        # Enroll students in courses
-        # TODO: use the relationship to add courses to students (or students to courses)
-        # Example: alice.courses.append(db101)
+        # Enroll students by adding courses to each student's course list.
+        alice.courses.append(db101)
+        alice.courses.append(py201)
+
+        bob.courses.append(db101)
+        bob.courses.append(calc1)
+
+        # Carol is left unenrolled so we can test the final query.
         session.commit()
 
-    # ── Demo 1: List all courses with their teacher ────────────────────────────
-    print("=== Courses and Teachers ===")
-    # TODO: query all courses and print title + teacher name
-    print()
+   # ── Demo 1: List all courses with their teacher ────────────────────────────
+print("=== Courses and Teachers ===")
 
-    # ── Demo 2: List a student's enrolled courses ──────────────────────────────
-    print("=== Alice's enrolled courses ===")
-    # TODO: find alice and print alice.courses
-    print()
+with Session(engine) as session:
+    courses = session.scalars(select(Course)).all()
 
-    # ── Demo 3: List all students in a course ─────────────────────────────────
-    print("=== Students in Databases 101 ===")
-    # TODO: find db101 and print db101.students
-    print()
+    for course in courses:
+        teacher_name = course.teacher.name if course.teacher else "No teacher"
+        print(f"{course.title} - {teacher_name}")
+
+print()
+
+   # ── Demo 2: List a student's enrolled courses ──────────────────────────────
+print("=== Alice's enrolled courses ===")
+
+with Session(engine) as session:
+    alice = session.scalar(
+        select(Student).where(Student.email == "alice@uni.edu")
+    )
+
+    for course in alice.courses:
+        print(course.title)
+
+print()
+
+   # ── Demo 3: List all students in a course ─────────────────────────────────
+print("=== Students in Databases 101 ===")
+
+with Session(engine) as session:
+    db101 = session.scalar(
+        select(Course).where(Course.title == "Databases 101")
+    )
+
+    for student in db101.students:
+        print(student.name)
+
+print()
 
     # ── Demo 4: Count enrollments per course ──────────────────────────────────
-    print("=== Enrollment counts ===")
-    # TODO: use func.count() to count students per course
-    print()
+print("=== Enrollment counts ===")
 
-    # ── Demo 5: Find students not enrolled in any course ──────────────────────
-    print("=== Unenrolled students ===")
-    # TODO: find students whose courses list is empty
-    print()
+with Session(engine) as session:
+    results = session.execute(
+        select(
+            Course.title,
+            func.count(enrollments.c.student_id)
+        )
+        .outerjoin(
+            enrollments,
+            Course.id == enrollments.c.course_id
+        )
+        .group_by(Course.id)
+    )
+
+    for title, count in results:
+        print(f"{title}: {count} students")
+
+print()
+
+   # ── Demo 5: Find students not enrolled in any course ──────────────────────
+print("=== Unenrolled students ===")
+
+with Session(engine) as session:
+    students = session.scalars(
+        select(Student).where(~Student.courses.any())
+    ).all()
+
+    for student in students:
+        print(student.name)
+
+print()
